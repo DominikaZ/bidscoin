@@ -413,6 +413,19 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> Union[None
                 # Save the NIfTI file with the newly constructed name
                 newbidsname = bids.increment_runindex(outfolder, newbidsname, run, scans_table)                 # Update the runindex now that the acq-label has changed
                 newbidsfile = outfolder/newbidsname
+                # Handle changed json filename if run-1 added via increment_index with <<>>
+                if run['bids'].get('run') == "<<>>" and bids.get_bidsvalue(newbidsname, "run") == "2":
+                    old_bidsname_run1 = bids.insert_bidskeyval(newbidsname, 'run', '', False)
+                    new_bidsname_run1 = bids.insert_bidskeyval(newbidsname, 'run', '1', False)
+                    old_jsonfile_run1 = (outfolder/old_bidsname_run1).with_suffix('').with_suffix(".json")
+                    new_jsonfile_run1 = (outfolder/new_bidsname_run1).with_suffix('').with_suffix(".json")
+                    if not new_jsonfile_run1.is_file() or old_jsonfile_run1.is_file():
+                        LOGGER.warning(f"Unexpected file conversion result: {old_jsonfile_run1} should have been renamed to {new_jsonfile_run1}")
+                    else:
+                        if old_jsonfile_run1 in jsonfiles:
+                            jsonfiles.remove(old_jsonfile_run1)
+                        if new_jsonfile_run1 not in jsonfiles:
+                            jsonfiles.append(new_jsonfile_run1)
                 LOGGER.verbose(f"Found dcm2niix {postfixes} postfixes, renaming\n{dcm2niixfile} ->\n{newbidsfile}")
                 if newbidsfile.is_file():
                     LOGGER.warning(f"Overwriting existing {newbidsfile} file -- check your results carefully!")
