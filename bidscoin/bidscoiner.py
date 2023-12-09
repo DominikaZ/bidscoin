@@ -50,6 +50,10 @@ def bidscoiner(rawfolder: str, bidsfolder: str, subjects: list=(), force: bool=F
 
     # Create a code/bidscoin subfolder
     (bidsfolder/'code'/'bidscoin').mkdir(parents=True, exist_ok=True)
+    # Delete mappings file if it exists
+    if (bidsfolder / 'code' / 'bidscoin' / 'mappings.tsv').exists():
+        LOGGER.info('Deleting old code/bidscoin/mappings.tsv')
+        (bidsfolder / 'code' / 'bidscoin' / 'mappings.tsv').unlink()
 
     # Create a dataset description file if it does not exist
     dataset_file = bidsfolder/'dataset_description.json'
@@ -290,6 +294,13 @@ def bidscoiner(rawfolder: str, bidsfolder: str, subjects: list=(), force: bool=F
                     # Clean-up the temporary unpacked data
                     if unpacked:
                         shutil.rmtree(sesfolder)
+
+    # delete session column from mappings if no sessions
+    if (bidsfolder / 'code' / 'bidscoin' / 'mappings.tsv').exists():
+        df_mappings = pd.read_csv(bidsfolder / 'code' / 'bidscoin' / 'mappings.tsv', sep='\t')
+        if df_mappings["session"].isna().all():
+            df_mappings.drop(columns="session", inplace=True)
+            df_mappings.to_csv(bidsfolder / 'code' / 'bidscoin' / 'mappings.tsv', sep='\t', index=False)
 
     LOGGER.info('-------------- FINISHED! ------------')
     LOGGER.info('')
