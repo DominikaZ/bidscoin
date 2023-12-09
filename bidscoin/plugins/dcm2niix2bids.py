@@ -497,6 +497,9 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> Union[None
     scans_table.sort_values(by=['acq_time','filename'], inplace=True)
     scans_table.replace('','n/a').to_csv(scans_tsv, sep='\t', encoding='utf-8', na_rep='n/a')
 
+    # Write bids mappings
+    bids.add_bids_mappings(bids_mappings, session, bidsfolder, bidsses)
+
     # Collect personal data for the participants.tsv file
     if dataformat == 'DICOM':                               # PAR does not contain personal info
         personals = {}
