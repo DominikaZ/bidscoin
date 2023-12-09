@@ -20,7 +20,7 @@ import pandas as pd
 import ast
 from functools import lru_cache
 from pathlib import Path
-from typing import Union, List, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 from nibabel.parrec import parse_PAR_header
 from pandas import DataFrame
 from pydicom import dcmread, fileset, datadict
@@ -1889,7 +1889,7 @@ def insert_bidskeyval(bidsfile: Union[str, Path], bidskey: str, newvalue: str, v
     return newbidsfile
 
 
-def increment_runindex(outfolder: Path, bidsname: str, run: dict, scans_table: DataFrame=pd.DataFrame()) -> Union[Path, str]:
+def increment_runindex(outfolder: Path, bidsname: str, run: dict, scans_table: DataFrame=pd.DataFrame(), bids_source_mappings: Optional[Set]=None) -> Union[Path, str]:
     """
     Checks if a file with the same bidsname already exists in the folder and then increments the dynamic runindex
     (if any) until no such file is found.
@@ -1898,11 +1898,12 @@ def increment_runindex(outfolder: Path, bidsname: str, run: dict, scans_table: D
     If the run-less file already exists, start with run-2 and rename the existing run-less files to run-index 1.
     Also update the scans table accordingly
 
-    :param outfolder:   The full pathname of the bids output folder
-    :param bidsname:    The bidsname with a provisional runindex
-    :param run:         The run mapping with the BIDS key-value pairs
-    :param scans_table: BIDS scans.tsv dataframe with all filenames and acquisition timestamps
-    :return:            The bidsname with the original or incremented runindex
+    :param outfolder:            The full pathname of the bids output folder
+    :param bidsname:             The bidsname with a provisional runindex
+    :param run:                  The run mapping with the BIDS key-value pairs
+    :param scans_table:          BIDS scans.tsv dataframe with all filenames and acquisition timestamps
+    :param bids_source_mappings: The set of bids mappings for concrete source
+    :return:                     The bidsname with the original or incremented runindex
     """
 
     # Check input
@@ -1929,13 +1930,19 @@ def increment_runindex(outfolder: Path, bidsname: str, run: dict, scans_table: D
         else:                               # Do the normal increment
             bidsname = get_bidsvalue(bidsname, 'run', str(int(runindex) + 1))
 
-    # Adds run-1 key to files with bidsname that don't have run index. Updates scans table respectively
-    if runval == '<<>>' and bidsname == run2_bidsname:
+    # Adds run-1 key to files with bidsname that don't have run index. Updates scans table and bids mappings respectively
+    if bids_source_mappings and runval == '<<>>' and bidsname == run2_bidsname:
         old_bidsname = insert_bidskeyval(bidsname, 'run', '', False)
         new_bidsname = insert_bidskeyval(bidsname, 'run', '1', False)
         for file in outfolder.glob(f"{old_bidsname}.*"):
             ext = ''.join(file.suffixes)
             file.replace((outfolder/new_bidsname).with_suffix(ext))
+
+            # change entry in bids mappings
+            if ext != '.json':
+                if (outfolder/old_bidsname).with_suffix(ext) in bids_source_mappings:
+                    bids_source_mappings.remove((outfolder / old_bidsname).with_suffix(ext))
+                bids_source_mappings.add((outfolder / new_bidsname).with_suffix(ext))
 
             # Change row name in the scans table
             if f"{outfolder.name}/{old_bidsname}{ext}" in scans_table.index:
