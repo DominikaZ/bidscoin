@@ -13,11 +13,12 @@ import shutil
 import subprocess
 import pandas as pd
 import json
-from typing import Union
+from typing import Union, List
 from pathlib import Path
 from functools import lru_cache
 from bids_validator import BIDSValidator
 from bidscoin import bcoin, bids, lsdirs
+from bidscoin.bids import BidsMapping
 
 LOGGER = logging.getLogger(__name__)
 
@@ -214,6 +215,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> Union[None
     # Read or create a scans_table and tsv-file
     scans_tsv = bidsses/f"{subid}{'_' + sesid if sesid else ''}_scans.tsv"
     scans_table = pd.DataFrame()
+    bids_mappings: List[BidsMapping] = []
     if scans_tsv.is_file():
         scans_table = pd.read_csv(scans_tsv, sep='\t', index_col='filename')
         print('debug')
@@ -238,15 +240,19 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> Union[None
             # Check if we should ignore this run
             if datasource.datatype in bidsmap['Options']['bidscoin']['ignoretypes']:
                 LOGGER.info(f"--> Leaving out: {source}")
+                bids_mappings.append(BidsMapping(source, {Path(bidsses / 'X')}, datasource.datatype, run))
                 continue
 
             # Check if we already know this run
             if not match:
                 LOGGER.error(f"--> Skipping unknown '{datasource.datatype}' run: {sourcefile}\n"
                              f"Re-run the bidsmapper and delete {bidsses} to solve this warning")
+                bids_mappings.append(BidsMapping(source, {Path(bidsses / 'skipped')}, datasource.datatype, run))
                 continue
 
             LOGGER.info(f"--> Coining: {source}")
+            bids_mapping = BidsMapping(source, set(), datasource.datatype, run)
+            bids_mappings.append(bids_mapping)
 
             # Create the BIDS session/datatype output folder
             suffix = datasource.dynamicvalue(run['bids']['suffix'], True, True)
@@ -286,11 +292,18 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> Union[None
                 if bcoin.run_command(command):
                     if not list(outfolder.glob(f"{bidsname}.*nii*")): continue
 
+            bids_mapping.targets.update(outfolder.glob(f"{bidsname}.*[!json]"))
+
             # Load / copy over the source meta-data
             sidecar  = (outfolder/bidsname).with_suffix('.json')
             metadata = bids.poolmetadata(sourcefile, sidecar, run['meta'], options['meta'], datasource)
             with sidecar.open('w') as json_fid:
                 json.dump(metadata, json_fid, indent=4)
+
+    # Handle dynamic index for run-1
+    bids.rename_runless_to_run1(bids_mappings, scans_table)
+    # Write bids mappings
+    bids.add_bids_mappings(bids_mappings, session, bidsfolder, bidsses)
 
     # Collect personal data for the participants.tsv file
     if dataformat == 'DICOM':

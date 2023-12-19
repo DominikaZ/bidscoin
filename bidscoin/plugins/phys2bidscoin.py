@@ -3,6 +3,9 @@ interact with and convert physiological source data. Phys2bids currently support
 (ADInstruments) and AcqKnowledge (BIOPAC) source files to compressed tab-separated value (``.tsv.gz``) files and
 create their json sidecar files, as per BIDS specifications. This plugin has been developed during the OHBM hackathon
 2021 (https://github.com/ohbm/hackathon2021/issues/12) and is **not yet functional**"""
+from typing import List
+
+from bidscoin.bids import BidsMapping
 
 try:
     from phys2bids.phys2bids import phys2bids
@@ -187,6 +190,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
         return
 
     # Loop over all source data files and convert them to BIDS
+    bids_mappings: List[BidsMapping] = []
     for sourcefile in sourcefiles:
 
         # Get a data source, a matching run from the bidsmap
@@ -196,14 +200,18 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
         # Check if we should ignore this run
         if datasource.datatype in bidsmap['Options']['bidscoin']['ignoretypes']:
             LOGGER.info(f"--> Leaving out: {sourcefile}")
+            bids_mappings.append(BidsMapping(sourcefile, {Path(bidsses / 'X')}, datasource.datatype, run))
             continue
 
         # Check that we know this run
         if not match:
             LOGGER.error(f"Skipping unknown '{datasource.datatype}' run: {sourcefile}\n-> Re-run the bidsmapper and delete the physiological output data in {bidsses} to solve this warning")
+            bids_mappings.append(BidsMapping(sourcefile, {Path(bidsses / 'skipped')}, datasource.datatype, run))
             continue
 
         LOGGER.info(f"--> Coining: {sourcefile}")
+        bids_mapping = BidsMapping(sourcefile, set(), datasource.datatype, run)
+        bids_mappings.append(bids_mapping)
 
         # Get an ordered list of the func runs from the scans.tsv file (which should have a standardized datetime format)
         scans_tsv = bidsses/f"{subid}{'_'+sesid if sesid else ''}_scans.tsv"
@@ -252,6 +260,7 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
                                 yml                     = '',
                                 debug                   = True,
                                 quiet                   = False)
+        bids_mapping.targets.update(physiofiles)
 
         # Add user-specified meta-data to the newly produced json files (NB: assumes every physio-file comes with a json-file)
         for physiofile in physiofiles:
@@ -271,3 +280,6 @@ def bidscoiner_plugin(session: Path, bidsmap: dict, bidsses: Path) -> None:
                 jsondata[metakey] = metaval
             with jsonfile.open('w') as json_fid:
                 json.dump(jsondata, json_fid, indent=4)
+
+    # Write bids mappings
+    bids.add_bids_mappings(bids_mappings, session, bidsfolder, bidsses)
