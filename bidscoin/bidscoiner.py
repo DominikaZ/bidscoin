@@ -55,6 +55,11 @@ def bidscoiner(rawfolder: str, bidsfolder: str, subjects: list=(), force: bool=F
 
     # Create a code/bidscoin subfolder
     (bidsfolder/'code'/'bidscoin').mkdir(parents=True, exist_ok=True)
+    # Delete bids_mappings file if it exists
+    bids_mappings_file = bidsfolder / 'code' / 'bidscoin' / 'bids_mappings.tsv'
+    if bids_mappings_file.exists():
+        LOGGER.info('Deleting old code/bidscoin/bids_mappings.tsv')
+        bids_mappings_file.unlink()
 
     # Create a dataset description file if it does not exist
     dataset_file = bidsfolder/'dataset_description.json'
@@ -229,6 +234,9 @@ def bidscoiner(rawfolder: str, bidsfolder: str, subjects: list=(), force: bool=F
         if not DEBUG:
             shutil.rmtree(bidsfolder/'HPC_work', ignore_errors=True)
 
+        # delete session column from bids_mappings if no sessions
+        bids.drop_session_from_bids_mappings(bids_mappings_file)
+
         LOGGER.info('')
         LOGGER.info('============== HPC FINISH =============')
         LOGGER.info('')
@@ -295,6 +303,9 @@ def bidscoiner(rawfolder: str, bidsfolder: str, subjects: list=(), force: bool=F
                     # Clean-up the temporary unpacked data
                     if unpacked:
                         shutil.rmtree(sesfolder)
+
+    # delete session column from bids_mappings if no sessions
+    bids.drop_session_from_bids_mappings(bids_mappings_file)
 
     LOGGER.info('-------------- FINISHED! ------------')
     LOGGER.info('')
